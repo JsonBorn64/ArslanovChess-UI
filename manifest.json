@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Free Chess Analyzer with brilliants – Import from Chess.com & Lichess",
+  "name": "Free Chess Analyzer with brilliants, ratings",
   "version": "0.26",
   "description": "One-click chess analysis for Lichess & Chess.com. Calculate rating, accuracy, and brilliant moves.",
   "icons": {

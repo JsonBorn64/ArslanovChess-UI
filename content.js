@@ -181,13 +181,14 @@ async function getCurrentPgn_chessCom() {
 function getCurrentPgn_lichess() {
     debuglog("getCurrentPgn_lichess")
     // get game id
-    const urlParts = window.location.href.split("/")
-    const index = urlParts.indexOf("lichess.org") + 1
-    const gameId = urlParts[index].slice(0, 8)
+    // url can be lichess.org/<id> or lichess.org/game/<id> (id may be 12 chars with player suffix)
+    const pathParts = window.location.pathname.split("/").filter(part => part && part !== "game")
+    const gameId = (pathParts.find(part => /^[a-zA-Z0-9]{8,12}$/.test(part)) || "").slice(0, 8)
     // get game pgn
     return new Promise((resolve, reject) => {
+        if (!gameId) return reject(new Error("lichess game id not found"))
         fetch(`https://lichess.org/game/export/${gameId}?evals=false&clocks=false&opening=false`)
-            .then(response => response.text())
+            .then(response => response.ok ? response.text() : Promise.reject(new Error(`lichess export failed: ${response.status}`)))
             .then(data => {
                 resolve(data)
             })
