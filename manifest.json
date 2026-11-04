@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Free Chess Analyzer with brilliants, ratings",
-  "version": "0.26",
-  "description": "One-click chess analysis for Lichess & Chess.com. Calculate rating, accuracy, and brilliant moves.",
+  "version": "0.28",
+  "description": "One-click chess analysis for Lichess, Chess.com & Endgame. Calculate rating, accuracy, and brilliant moves.",
   "icons": {
     "16": "icons/16.png",
     "32": "icons/32.png",
@@ -13,7 +13,8 @@
       "matches": [
         "https://www.c4355.com/*",
         "https://www.chess.com/*",
-        "https://lichess.org/*"
+        "https://lichess.org/*",
+        "https://endgame.ai/*"
       ],
       "js": [
         "content.js",

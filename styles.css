@@ -176,3 +176,104 @@
   from { transform: rotate(0); }
   to { transform: rotate(360deg); }
 }
+/* endgame.ai styles */
+
+#ArslanovEndgameUI {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  margin-top: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--nd-text-primary, #ffffff);
+}
+
+#ArslanovEndgameUI > .title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  white-space: nowrap;
+}
+
+#ArslanovEndgameUI > .title > .svg-container {
+  margin-left: 10px;
+}
+
+/* the logo is white by default, follow the site theme instead */
+#ArslanovEndgameUI > .title > .svg-container path {
+  fill: currentColor;
+}
+
+#ArslanovEndgameUI > .buttons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  width: 100%;
+  max-width: 320px;
+}
+
+#ArslanovEndgameUI > .buttons > button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 40px;
+  width: calc((100% - 10px) / 2);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--nd-text-primary, #ffffff);
+  border: 1px solid var(--nd-border-strong, #ffffff40);
+  cursor: pointer;
+}
+
+#ArslanovEndgameUI > .buttons > button:first-child {
+  background: var(--nd-primary, #4400ff);
+  color: var(--nd-white, #ffffff);
+  border: none;
+}
+
+#ArslanovEndgameUI > .buttons > button:hover {
+  opacity: 0.9;
+}
+
+#ArslanovEndgameUI .arslanov-loader {
+  height: 40px;
+}
+
+#ArslanovEndgameUI .arslanov-spinner {
+  border: 3px solid var(--nd-border-strong, #ffffff40);
+  border-top-color: var(--nd-text-primary, #ffffff);
+}
+
+#ArslanovEndgameUI .arslanov-loader-text {
+  color: var(--nd-text-primary, #ffffff);
+}
+
+#ArslanovEndgameUI .arslanov-error {
+  height: 40px;
+}
+
+#ArslanovEndgameUI .arslanov-unsupported {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 40px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--nd-text-secondary, #ffffffcc);
+}
+
+.battle-content > #ArslanovEndgameUI {
+  margin-bottom: 12px;
+}
+
+/* the board isolates the finished game popup, so with a small board
+   the popup (taller with our UI) is covered by the player row below the board */
+.board.finished {
+  z-index: 1;
+}

@@ -38,9 +38,68 @@ if (window.location.href.includes("lichess.org")) {
     }
 }
 
-async function goToArslanovChess(site, color) {
+if (window.location.hostname == "endgame.ai") {
+    // endgame.ai is a SPA, so the finished game UI can appear many times without page reload
+
+    // popup over the board after the game is over
+    onEachElementAppear('.game-finished-container', (popup) => {
+        if (popup.querySelector('#ArslanovEndgameUI')) return
+        // actions are rendered a bit later than the popup, outside of them UI is not inside the popup card
+        const actions = popup.querySelector('.game-actions')
+        // between battle games there are no actions, only the timer of the next game
+        const battleTimer = popup.querySelector('.battle-content .game-set-timer')
+        // after the last battle game there is only the summary of the battle
+        const battleSummary = popup.querySelector('.battle-content .end-game-set-summary')
+        if (actions) actions.appendChild(endgameUI(actions))
+        else if (battleTimer) battleTimer.before(endgameUI(battleTimer))
+        else if (battleSummary) battleSummary.after(endgameUI(battleSummary))
+    })
+
+    // actions in the sidebar of the finished game
+    onEachElementAppear('.finished-game-actions', (targetElement) => {
+        if (!targetElement.querySelector('#ArslanovEndgameUI')) targetElement.appendChild(endgameUI(targetElement))
+    })
+
+    // sidebar of the bot game has no finished game actions, so add UI under the widgets when the board is finished
+    onEachElementAppear('.widgets > .bot-header-panel', (panel) => {
+        const widgets = panel.parentElement
+        const ui = widgets.querySelector(':scope > #ArslanovEndgameUI')
+        const finished = !!document.querySelector('.board.finished')
+        if (finished && !ui) widgets.appendChild(endgameUI(widgets))
+        // a new game can be started without page reload
+        if (!finished && ui) ui.remove()
+    })
+}
+
+// chess variants of endgame.ai that can be analyzed as regular chess
+const ENDGAME_SUPPORTED_VARIANTS = ["Standard", "Blind"]
+const ENDGAME_VARIANT_NAMES = { "Chess960": "Шахматы Фишера", "SecretQueen": "Тайный ферзь" }
+
+// UI is hidden until the variant of the game is known, unsupported variants get a message instead of buttons
+function endgameUI(targetElement) {
+    const ui = arslanovUI("endgame.ai")
+    ui.style.display = "none"
+    getEndgameGame(findEndgameGameId(targetElement))
+        .then(json => {
+            const variant = json.variant || "Standard"
+            if (!ENDGAME_SUPPORTED_VARIANTS.includes(variant)) {
+                const message = document.createElement("div")
+                message.className = "arslanov-unsupported"
+                message.textContent = `Вариант «${ENDGAME_VARIANT_NAMES[variant] || variant}» не поддерживается`
+                const buttonContainer = ui.querySelector(".buttons")
+                buttonContainer.innerHTML = ""
+                buttonContainer.appendChild(message)
+            }
+        })
+        .catch(error => debuglog(error))
+        .finally(() => ui.style.display = "")
+    return ui
+}
+
+async function goToArslanovChess(site, color, buttonContainer) {
     let pgn
     if (site == "chess.com") pgn = await getCurrentPgn_chessCom()
+    else if (site == "endgame.ai") pgn = await getCurrentPgn_endgame(findEndgameGameId(buttonContainer))
     else pgn = await getCurrentPgn_lichess()
     const encoded = encodeURIComponent(cleanPgn(pgn))
     window.open(`https://arslanovchess.com/games-analysis?autostart=true&color=${color}&pgn=${encoded}#title`)
@@ -73,7 +132,7 @@ function arslanovUI(site) {
     buttonB.addEventListener('click', () => handleAnalyzeClick(site, 'b', buttonContainer))
 
     const container = document.createElement("div")
-    container.id = site == "chess.com" ? "ArslanovChessComUI" : "ArslanovLichessUI"
+    container.id = { "chess.com": "ArslanovChessComUI", "endgame.ai": "ArslanovEndgameUI" }[site] || "ArslanovLichessUI"
     container.appendChild(title)
     container.appendChild(buttonContainer)
 
@@ -98,6 +157,14 @@ function onElementAppear(selector, callback) {
     })
 
     observer.observe(targetNode, config)
+}
+
+// unlike onElementAppear, keeps observing and calls callback for every matching element
+function onEachElementAppear(selector, callback) {
+    const check = () => document.querySelectorAll(selector).forEach(element => callback(element))
+    const observer = new MutationObserver(check)
+    observer.observe(document.body, { childList: true, subtree: true })
+    check()
 }
 
 function chessComJsonToPgn(json) {
@@ -196,6 +263,56 @@ function getCurrentPgn_lichess() {
                 reject(error)
             })
     })
+}
+
+// the board has id "board-<gameId>", the url has no game id in battles and simuls (and there can be many boards)
+function findEndgameGameId(element) {
+    for (let parent = element; parent; parent = parent.parentElement) {
+        const board = parent.closest('[id^="board-"]') || parent.querySelector('[id^="board-"]')
+        if (board) return board.id.slice("board-".length)
+    }
+    // url can be endgame.ai/game/<id> or endgame.ai/bot-game/<id>
+    const match = window.location.pathname.match(/\/(?:bot-)?game\/([a-zA-Z0-9]+)/)
+    return match ? match[1] : null
+}
+
+async function getEndgameGame(gameId) {
+    if (!gameId) throw new Error("endgame game id not found")
+    const response = await fetch(`https://endgame.ai/api/games/${gameId}`)
+    if (!response.ok) throw new Error(`endgame game request failed: ${response.status}`)
+    return response.json()
+}
+
+async function getCurrentPgn_endgame(gameId) {
+    debuglog("getCurrentPgn_endgame")
+    const json = await getEndgameGame(gameId)
+    if (!ENDGAME_SUPPORTED_VARIANTS.includes(json.variant || "Standard")) throw new Error(`endgame variant ${json.variant} is not supported`)
+    return endgameJsonToPgn(json)
+}
+
+function endgameJsonToPgn(json) {
+    const chess = new Chess(json.startingFen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+
+    const white = json.players.find(player => player.color == "w") || {}
+    const black = json.players.find(player => player.color == "b") || {}
+    chess.header("White", white.username || "White")
+    chess.header("Black", black.username || "Black")
+    if (white.rating) chess.header("WhiteElo", Math.round(white.rating).toString())
+    if (black.rating) chess.header("BlackElo", Math.round(black.rating).toString())
+
+    // each move is a query string like "n=1&p=pw&cf=e2&ct=e4&ti=&pgn=e4&fen=..."
+    json.moves.forEach(query => {
+        const params = {}
+        query.split("&").forEach(pair => {
+            const index = pair.indexOf("=")
+            params[pair.slice(0, index)] = decodeURIComponent(pair.slice(index + 1))
+        })
+        const promotion = params.ti ? params.ti[0].toLowerCase() : undefined
+        const move = chess.move({ from: params.cf, to: params.ct, promotion }) || chess.move(params.pgn)
+        if (!move) throw new Error(`endgame move parse failed: ${query}`)
+    })
+    debuglog(chess.pgn())
+    return chess.pgn()
 }
 
 async function openPgnTab() {
@@ -371,7 +488,7 @@ function handleAnalyzeClick(site, color, buttonContainer) {
     buttonContainer.innerHTML = ''
     buttonContainer.appendChild(createLoader())
 
-    goToArslanovChess(site, color)
+    goToArslanovChess(site, color, buttonContainer)
         .then(() => {
             // success: restore original buttons
             buttonContainer.innerHTML = ''
