@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Free Chess Analyzer with brilliants, ratings",
-  "version": "0.28",
+  "version": "0.29",
   "description": "One-click chess analysis for Lichess, Chess.com & Endgame. Calculate rating, accuracy, and brilliant moves.",
   "icons": {
     "16": "icons/16.png",

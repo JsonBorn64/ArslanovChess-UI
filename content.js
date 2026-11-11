@@ -69,6 +69,26 @@ if (window.location.hostname == "endgame.ai") {
         // a new game can be started without page reload
         if (!finished && ui) ui.remove()
     })
+
+    // expanded game card in the games history of a profile, under the game review button
+    onEachElementAppear('.recent-game-card .expanded-game-content .game-review-button', (reviewButton) => {
+        const card = reviewButton.closest('.recent-game-card')
+        if (card.querySelector('#ArslanovEndgameUI')) return
+        const ui = endgameUI(card)
+        // the card collapses on click
+        ui.addEventListener("click", (event) => event.stopPropagation())
+        reviewButton.parentElement.after(ui)
+    })
+
+    // analysis page of a game, under the navigation toolbar of the right panel
+    onEachElementAppear('.column-2.desktop-panel-position', (column) => {
+        const panel = column.parentElement
+        const ui = panel.querySelector(':scope > #ArslanovEndgameUI')
+        const hasGame = !!getEndgameAnalyzeId()
+        if (hasGame && !ui) panel.appendChild(endgameUI(panel))
+        // free analysis without a game
+        if (!hasGame && ui) ui.remove()
+    })
 }
 
 // chess variants of endgame.ai that can be analyzed as regular chess
@@ -267,6 +287,12 @@ function getCurrentPgn_lichess() {
 
 // the board has id "board-<gameId>", the url has no game id in battles and simuls (and there can be many boards)
 function findEndgameGameId(element) {
+    // game card in the games history
+    const card = element.closest('[data-game-id]')
+    if (card) return card.dataset.gameId
+    // the board of the analysis page has a random id
+    const analyzeId = getEndgameAnalyzeId()
+    if (analyzeId) return analyzeId
     for (let parent = element; parent; parent = parent.parentElement) {
         const board = parent.closest('[id^="board-"]') || parent.querySelector('[id^="board-"]')
         if (board) return board.id.slice("board-".length)
@@ -276,9 +302,16 @@ function findEndgameGameId(element) {
     return match ? match[1] : null
 }
 
+// url endgame.ai/analyze/<id>, id is "imp_<id>" for an imported game (game review of any game is imported)
+function getEndgameAnalyzeId() {
+    const match = window.location.pathname.match(/\/analyze\/([a-zA-Z0-9_]+)/)
+    return match ? match[1] : null
+}
+
 async function getEndgameGame(gameId) {
     if (!gameId) throw new Error("endgame game id not found")
-    const response = await fetch(`https://endgame.ai/api/games/${gameId}`)
+    const endpoint = gameId.startsWith("imp_") ? "imported-games" : "games"
+    const response = await fetch(`https://endgame.ai/api/${endpoint}/${gameId}`)
     if (!response.ok) throw new Error(`endgame game request failed: ${response.status}`)
     return response.json()
 }
