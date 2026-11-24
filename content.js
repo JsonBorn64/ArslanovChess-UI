@@ -5,17 +5,17 @@ if (window.location.href.includes("chess.com") || window.location.href.includes(
 
     onElementAppear('.game-over-modal-shell-buttons', () => {
         const targetElement = document.querySelector('.game-over-modal-shell-buttons')
-        if (targetElement) targetElement.appendChild(arslanovUI("chess.com"))
+        if (targetElement) targetElement.appendChild(chessComUI())
     })
 
     onElementAppear('.modal-game-over-buttons-component', () => {
         const targetElement = document.querySelector('.modal-game-over-buttons-component')
-        if (targetElement) targetElement.appendChild(arslanovUI("chess.com"))
+        if (targetElement) targetElement.appendChild(chessComUI())
     })
 
     onElementAppear('.tab-review-action-buttons', () => {
         const targetElement = document.querySelector('.tab-review-action-buttons')
-        if (targetElement) targetElement.appendChild(arslanovUI("chess.com"))
+        if (targetElement) targetElement.appendChild(chessComUI())
     })
 
 }
@@ -121,6 +121,8 @@ async function goToArslanovChess(site, color, buttonContainer) {
     if (site == "chess.com") pgn = await getCurrentPgn_chessCom()
     else if (site == "endgame.ai") pgn = await getCurrentPgn_endgame(findEndgameGameId(buttonContainer))
     else pgn = await getCurrentPgn_lichess()
+    // only finished games can be analyzed
+    if (/\[Result "\*"\]/.test(pgn)) throw new Error("the game is not finished")
     const encoded = encodeURIComponent(cleanPgn(pgn))
     window.open(`https://arslanovchess.com/games-analysis?autostart=true&color=${color}&pgn=${encoded}#title`)
     return pgn
@@ -187,82 +189,132 @@ function onEachElementAppear(selector, callback) {
     check()
 }
 
-function chessComJsonToPgn(json) {
-    const initialFen = json.game.initialSetup || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
-    const moveList = json.game.moveList
-    var T = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?{~}(^)[_]@#$,./&-*++=";
-    function decodeMoves(e) {
-        var c, a, g = e.length, f = []
-        for (c = 0; c < g; c += 2) {
-            var d = {}, b = T.indexOf(e[c])
-            63 < (a = T.indexOf(e[c + 1])) && (d.promotion = "qnrbkp"[Math.floor((a - 64) / 3)], a = b + (16 > b ? -8 : 8) + (a - 1) % 3 - 1)
-            75 < b ? d.drop = "qnrbkp"[b - 79] : d.from = T[b % 8] + (Math.floor(b / 8) + 1)
-            d.to = T[a % 8] + (Math.floor(a / 8) + 1)
-            f.push(d)
-        }
-        return f
+// Chess.com games are taken only from the official Published-Data API (https://www.chess.com/news/view/published-data-api),
+// it contains only finished games. Internal chess.com endpoints are not used after the request of Chess.com, LLC.
+const CHESSCOM_API = "https://api.chess.com/pub/player"
+const CHESSCOM_OLD_ARCHIVES_LIMIT = 24
+
+// url can be /game/<id>, /game/live/<id>, /game/daily/<id>, /analysis/game/live/<id>, /computer/<id> ...
+function getChessComGameId() {
+    const match = window.location.pathname.match(/\/(\d{5,})(?:\/|$)/)
+    return match ? match[1] : null
+}
+
+// games with bots are not in the public API
+function isChessComBotGame() {
+    return /\/computer(\/|$)/.test(window.location.pathname)
+}
+
+function chessComUI() {
+    if (!isChessComBotGame()) return arslanovUI("chess.com")
+    const ui = arslanovUI("chess.com")
+    const buttonContainer = ui.querySelector(".buttons")
+    buttonContainer.innerHTML = ""
+    buttonContainer.appendChild(unsupportedMessage(
+        "Партии с ботами не поддерживаются",
+        "По требованию Chess.com расширение получает партии только через их официальный публичный API, а партий с ботами в нём нет."
+    ))
+    return ui
+}
+
+function unsupportedMessage(text, note) {
+    const message = document.createElement("div")
+    message.className = "arslanov-unsupported"
+    message.textContent = text
+    if (note) {
+        const noteDiv = document.createElement("div")
+        noteDiv.className = "arslanov-note"
+        noteDiv.textContent = note
+        message.appendChild(noteDiv)
     }
-    const chess = new Chess(initialFen)
+    return message
+}
 
-    chess.header("White", json.game.pgnHeaders.White)
-    chess.header("Black", json.game.pgnHeaders.Black)
-    chess.header("WhiteElo", json.game.pgnHeaders.WhiteElo.toString())
-    chess.header("BlackElo", json.game.pgnHeaders.BlackElo.toString())
-
-    decodeMoves(moveList).forEach(move => {
-        // fix castling
-        if (chess.get(move.from).type == 'k' && (move.from == 'e1' || move.from == 'e8')) {
-            if (move.to == 'h1') move.to = 'g1'
-            if (move.to == 'a1') move.to = 'c1'
-            if (move.to == 'h8') move.to = 'g8'
-            if (move.to == 'a8') move.to = 'c8'
-        }
-        chess.move(move)
+// usernames of the players shown on the page, the game is searched in their archives
+function getChessComUsernames() {
+    const names = []
+    const add = (name) => {
+        name = (name || "").trim().toLowerCase()
+        if (/^[a-z0-9_-]{3,25}$/.test(name) && !names.includes(name)) names.push(name)
+    }
+    const selectors = [
+        '[data-test-element="user-tagline-username"]',
+        '.user-tagline-username',
+        '.cc-user-username-component',
+        '.user-username-component',
+    ]
+    selectors.forEach(selector => document.querySelectorAll(selector).forEach(element => add(element.textContent)))
+    // profile links as the last resort, there can be many of them on the page
+    document.querySelectorAll('a[href*="/member/"]').forEach(link => {
+        const match = link.getAttribute("href").match(/\/member\/([A-Za-z0-9_-]+)/)
+        if (match) add(match[1])
     })
-    console.log(chess.pgn())
-    return chess.pgn()
+    return names.slice(0, 6)
+}
+
+async function fetchChessComApi(url) {
+    const response = await fetch(url, { cache: "no-store" })
+    if (response.status === 404) return null
+    if (!response.ok) throw new Error(`chess.com public API request failed: ${response.status}`)
+    return response.json()
+}
+
+function chessComArchiveUrl(username, monthsAgo) {
+    const now = new Date()
+    const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsAgo, 1))
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0")
+    return `${CHESSCOM_API}/${username}/games/${date.getUTCFullYear()}/${month}`
+}
+
+async function findChessComGameInArchives(archiveUrls, gameId) {
+    for (const url of archiveUrls) {
+        const archive = await fetchChessComApi(url)
+        const game = ((archive && archive.games) || []).find(game => game.url && game.url.endsWith(`/${gameId}`))
+        if (game) return game
+    }
+    return null
+}
+
+// the game is in the archive of the month when it ended (UTC), so check the current and the previous month
+function findRecentChessComGame(username, gameId) {
+    return findChessComGameInArchives([0, 1].map(monthsAgo => chessComArchiveUrl(username, monthsAgo)), gameId)
+}
+
+async function findOldChessComGame(username, gameId) {
+    const list = await fetchChessComApi(`${CHESSCOM_API}/${username}/games/archives`)
+    const recent = [0, 1].map(monthsAgo => chessComArchiveUrl(username, monthsAgo))
+    const old = ((list && list.archives) || [])
+        .filter(url => !recent.includes(url))
+        .reverse()
+        .slice(0, CHESSCOM_OLD_ARCHIVES_LIMIT)
+    return findChessComGameInArchives(old, gameId)
 }
 
 async function getCurrentPgn_chessCom() {
     debuglog("getCurrentPgn_chessCom")
-    // try to get pgn by id
-    try {
-        const urlParts = window.location.href.split("/")
+    if (isChessComBotGame()) throw new Error("games with bots are not in the chess.com public API")
+    const gameId = getChessComGameId()
+    if (!gameId) throw new Error("chess.com game id not found")
+    const usernames = getChessComUsernames()
+    if (!usernames.length) throw new Error("chess.com usernames not found")
 
-        // Find gameId and gameType dynamically
-        const gameId = urlParts.find(part => !isNaN(parseInt(part)))
-        const gameTypeIndex = urlParts.indexOf(gameId) - 1
-        let gameType = gameTypeIndex >= 0 ? urlParts[gameTypeIndex] : null
-
-        if (gameType === "computer") {
-            const json = await fetch(`https://${urlParts[2]}/computer/callback/game/${gameId}`).then(res => res.json())
-            return Promise.resolve(chessComJsonToPgn(json))
-        } else if (gameType) {
-            if (gameType === "game") gameType = "live"
-            const json = await fetch(`https://${urlParts[2]}/callback/${gameType}/game/${gameId}`).then(res => res.json())
-            return Promise.resolve(chessComJsonToPgn(json))
-        }
-
-    } catch (error) {
-        console.log(error)
+    for (const username of usernames) {
+        const game = await findRecentChessComGame(username, gameId)
+        if (game) return game.pgn
     }
-
-    let pgn = await openShareDialog()
-        .then(openPgnTab)
-        .then(copyPgn)
-        .finally(closeShareDialog)
-    if (pgn) {
-        // The termination field confuses the PDF converter so the result
-        // is often output as a draw. This replaces the content with "Normal"
-        // which seems to work correctly.
-        if (pgn.indexOf(" won on time") !== -1) {
-            pgn = pgn.replace(/Termination "([^"]+)"/g, 'Termination "Time forfeit"')
-        } else {
-            pgn = pgn.replace(/Termination "([^"]+)"/g, 'Termination "Normal"')
-        }
-        return Promise.resolve(pgn)
+    for (const username of usernames) {
+        const game = await findOldChessComGame(username, gameId)
+        if (game) return game.pgn
     }
-    return Promise.reject()
+    // a game that has just ended can appear in the archive with a small delay
+    for (let attempt = 0; attempt < 2; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 3000))
+        for (const username of usernames) {
+            const game = await findRecentChessComGame(username, gameId)
+            if (game) return game.pgn
+        }
+    }
+    throw new Error("chess.com game not found in the public API")
 }
 
 function getCurrentPgn_lichess() {
@@ -348,120 +400,6 @@ function endgameJsonToPgn(json) {
     return chess.pgn()
 }
 
-async function openPgnTab() {
-    debuglog("openPgnTab")
-    const pgnDiv = document.querySelector('div.share-menu-tab-selector-component > div:nth-child(1)') ||
-        document.querySelector('div.alt-share-menu-tab.alt-share-menu-tab-image-component')
-
-    if (pgnDiv) {
-        return new Promise((resolve, reject) => {
-            pgnDiv.click()
-            setTimeout(resolve, 500)
-        })
-    }
-    let pgnTab = document.querySelector("#live_ShareMenuGlobalDialogDownloadButton") ||
-        document.querySelector(".icon-font-chess.download.icon-font-primary") ||
-        document.querySelector(".icon-download")
-    if (!pgnTab) {
-        const headerElements = document.querySelectorAll(
-            ".share-menu-dialog-component header *") || document
-        pgnTab = Array.from(headerElements).filter(
-            (x) => x.textContent == "PGN")[0]
-    }
-    if (pgnTab) {
-        return new Promise((resolve, reject) => {
-            pgnTab.click()
-            setTimeout(resolve, 500)
-        })
-    } else {
-        return Promise.reject()
-    }
-}
-
-async function openShareDialog() {
-    debuglog("openShareDialog")
-    const shareButton =
-        document.querySelector('span.secondary-controls-icon.download') ||
-        document.querySelector('button.share-button-component.icon-share') ||
-        document.querySelector('button.share-button-component.icon-share') ||
-        document.querySelector('button.icon-font-chess.share.live-game-buttons-button') ||
-        document.querySelector('button.share-button-component.share') ||
-        document.querySelector("button[data-test='download']") ||
-        document.querySelector("#shareMenuButton") ||
-        document.querySelector(".icon-font-chess.share.icon-font-primary") ||
-        document.querySelector(".icon-font-chess.share") ||
-        document.querySelector(".icon-share")
-    if (shareButton) {
-        return new Promise((resolve, reject) => {
-            shareButton.click()
-            setTimeout(resolve, 1000)
-        })
-    } else {
-        debuglog("failed openShareDialog")
-        return Promise.reject()
-    }
-}
-
-function closeShareDialog() {
-    debuglog("closeShareDialog")
-    const closeButton =
-        document.querySelector("#live_ShareMenuGlobalDialogCloseButton") ||
-        document.querySelector("button.ui_outside-close-component") ||
-        document.querySelector(".icon-font-chess.x.icon-font-primary") ||
-        document.querySelector(".icon-font-chess.x.icon-font-secondary") ||
-        document.querySelector(".icon-font-chess.x.ui_outside-close-icon") ||
-        document.querySelector("#chessboard_ShareMenuGlobalDialogCloseButton")
-    if (closeButton) {
-        closeButton.click()
-    } else {
-        debuglog("failed closeShareDialog")
-    }
-}
-
-async function copyPgn() {
-    debuglog("copyPgn")
-
-    let pgnDiv = document.querySelector('div.alt-share-menu-tab.alt-share-menu-tab-gif-component') ||
-        document.querySelector('div.alt-share-menu-tab.alt-share-menu-tab-image-component')
-
-    if (pgnDiv) {
-        pgnAttr = pgnDiv.attributes["pgn"]
-        if (pgnAttr) {
-            return Promise.resolve(pgnAttr.value)
-        }
-    }
-
-    // PGN with embedded analysis is not parsed correctly by lichess, so disable it.
-    // Note: both radio buttons match this selector (there's nothing unique in the markup).
-    // We're relying on the "Annotation" button being the first one, which is what querySelector gives us.
-    const disableAnalysisRadioButton =
-        document.querySelector('.share-menu-tab-pgn-toggle input[type=radio]')
-    if (disableAnalysisRadioButton) {
-        debuglog("found disable analysis radio button")
-        await new Promise((resolve, reject) => {
-            disableAnalysisRadioButton.click()
-            setTimeout(resolve, 500)
-            debuglog("analysis disabled")
-        })
-    } else {
-        debuglog("could not find disable analysis radio button!")
-    }
-
-    const textarea =
-        document.querySelector("#live_ShareMenuPgnContentTextareaId") ||
-        document.querySelector("textarea[name=pgn]") ||
-        document.querySelector(".form-textarea-component.pgn-download-textarea") ||
-        document.querySelector("#chessboard_ShareMenuPgnContentTextareaId")
-
-    if (textarea) {
-        debuglog(textarea.value)
-    } else {
-        debuglog("textarea failed")
-        Promise.reject()
-    }
-    return Promise.resolve(textarea.value)
-}
-
 function cleanPgn(pgn) {
     pgn = pgn.trim()
 
@@ -481,6 +419,8 @@ function cleanPgn(pgn) {
         .replace(comments_regex, '')
         .replace(variations_regex, '')
         .replace(annotation_glyphs_regex, '')
+        // black move numbers like "1... d5" are left after clock comments are removed
+        .replace(/\d+\.\.\./g, '')
         .replace(/\s+/g, ' ')
 
     const result = filteredTags.join('\n') + '\n\n' + moves
@@ -533,7 +473,12 @@ function handleAnalyzeClick(site, color, buttonContainer) {
         })
         .catch(err => {
             console.error('Ошибка получения PGN', err)
-            showError(buttonContainer, 'Ошибка получения PGN. <br> Попробуйте через архив партий.')
+            const message = err && err.message === "the game is not finished"
+                ? 'Партия ещё не закончена. <br> Анализ доступен только после окончания партии.'
+                : site == "chess.com"
+                    ? 'Партия не найдена в публичном API Chess.com. <br> Если партия только что закончилась, попробуйте через минуту.'
+                    : 'Ошибка получения PGN. <br> Попробуйте через архив партий.'
+            showError(buttonContainer, message)
             setTimeout(() => {
                 buttonContainer.innerHTML = ''
                 originalButtons.forEach(btn => buttonContainer.appendChild(btn))
