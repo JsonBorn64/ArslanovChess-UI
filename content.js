@@ -210,10 +210,12 @@ function chessComUI() {
     const ui = arslanovUI("chess.com")
     const buttonContainer = ui.querySelector(".buttons")
     buttonContainer.innerHTML = ""
-    buttonContainer.appendChild(unsupportedMessage(
+    const message = unsupportedMessage(
         "Партии с ботами не поддерживаются",
         "По требованию Chess.com расширение получает партии только через их официальный публичный API, а партий с ботами в нём нет."
-    ))
+    )
+    message.appendChild(manualAnalysisHint())
+    buttonContainer.appendChild(message)
     return ui
 }
 
@@ -446,11 +448,33 @@ function createLoader() {
     return wrapper
 }
 
-function showError(container, message) {
+const MANUAL_ANALYSIS_URL = "https://arslanovchess.com/games-analysis"
+
+// when the extension can't get the game, the user can always copy the PGN and paste it into the analysis manually
+function manualAnalysisHint() {
+    const hint = document.createElement('div')
+    hint.className = 'arslanov-manual-hint'
+    hint.appendChild(document.createTextNode('Вы всегда можете скопировать PGN партии и вставить его в '))
+    const link = document.createElement('a')
+    link.href = MANUAL_ANALYSIS_URL
+    link.target = '_blank'
+    link.rel = 'noopener'
+    link.textContent = 'анализ вручную'
+    // the card of endgame.ai games history collapses on click
+    link.addEventListener('click', (event) => event.stopPropagation())
+    hint.appendChild(link)
+    hint.appendChild(document.createTextNode('.'))
+    return hint
+}
+
+function showError(container, message, withManualHint = true) {
     container.innerHTML = ''
     const errorDiv = document.createElement('div')
     errorDiv.className = 'arslanov-error'
-    errorDiv.innerHTML = message
+    const text = document.createElement('div')
+    text.innerHTML = message
+    errorDiv.appendChild(text)
+    if (withManualHint) errorDiv.appendChild(manualAnalysisHint())
     container.appendChild(errorDiv)
 }
 
@@ -473,19 +497,21 @@ function handleAnalyzeClick(site, color, buttonContainer) {
         })
         .catch(err => {
             console.error('Ошибка получения PGN', err)
-            const message = err && err.message === "the game is not finished"
+            const notFinished = err && err.message === "the game is not finished"
+            const message = notFinished
                 ? 'Партия ещё не закончена. <br> Анализ доступен только после окончания партии.'
                 : site == "chess.com"
                     ? 'Партия не найдена в публичном API Chess.com. <br> Если партия только что закончилась, попробуйте через минуту.'
                     : 'Ошибка получения PGN. <br> Попробуйте через архив партий.'
-            showError(buttonContainer, message)
+            // unfinished games are rejected on purpose, so there is nothing to paste manually
+            showError(buttonContainer, message, !notFinished)
             setTimeout(() => {
                 buttonContainer.innerHTML = ''
                 originalButtons.forEach(btn => buttonContainer.appendChild(btn))
                 const [btnW, btnB] = buttonContainer.children
                 if (btnW) btnW.addEventListener('click', () => handleAnalyzeClick(site, 'w', buttonContainer))
                 if (btnB) btnB.addEventListener('click', () => handleAnalyzeClick(site, 'b', buttonContainer))
-            }, 5000)
+            }, 12000)
         })
         .finally(() => {
             delete buttonContainer.dataset.loading

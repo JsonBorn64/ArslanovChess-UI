@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Free Chess Analyzer with brilliants, ratings",
-  "version": "0.30",
+  "version": "0.31",
   "description": "One-click analysis of finished Lichess, Endgame and Chess.com games: rating, accuracy, brilliants. Not affiliated with Chess.com.",
   "icons": {
     "16": "icons/16.png",
