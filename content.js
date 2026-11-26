@@ -212,7 +212,7 @@ function chessComUI() {
     buttonContainer.innerHTML = ""
     const message = unsupportedMessage(
         "Партии с ботами не поддерживаются",
-        "По требованию Chess.com расширение получает партии только через их официальный публичный API, а партий с ботами в нём нет."
+        "Расширение загружает партии через официальный публичный API, а партий с ботами в нём нет."
     )
     message.appendChild(manualAnalysisHint())
     buttonContainer.appendChild(message)
